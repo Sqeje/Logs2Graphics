@@ -1,6 +1,5 @@
-﻿using System.Globalization;
-using System.Security.Principal;
-using GPU_Z_Logs2Graphics;
+﻿using GPU_Z_Logs2Graphics;
+using GPU_Z_Logs2Graphics.AskWindow;
 using ScottPlot;
 
 
@@ -14,57 +13,99 @@ if (!Directory.Exists(ProgramSettings.InputLogPath))
 }
 
 
-Console.WriteLine("Hello! This program can Build a Graphics for Log-file from GPU-Z ");
-Console.WriteLine($"Please, pull yore logs in {ProgramSettings.InputLogPath} folder");
+// Start Program
+ConsoleCleaner.CleanWithTitle();
 
-Console.WriteLine("Files inside folder? (Press any key to continue): ");
+if (Directory.GetFiles(ProgramSettings.OutputGraphicsPath).Length > 0)
+{
+    Console.WriteLine("The graphs had already been built previously. Do you want to delete them? (y/n)");
+    switch (Console.ReadKey().Key)
+    {
+        case ConsoleKey.Y:
+            Directory.Delete(ProgramSettings.OutputGraphicsPath,  true);
+            Directory.CreateDirectory(ProgramSettings.OutputGraphicsPath);
+            break;
+        default:
+            break;
+    }
+}
+
+ConsoleCleaner.CleanWithTitle();
+
+FileInfo[] allLogFilesInfo = Directory.GetFiles(ProgramSettings.InputLogPath).Select(x => new FileInfo(x)).ToArray();
+
+while (allLogFilesInfo.Length == 0)
+{
+    ConsoleCleaner.CleanWithTitle();
+    
+    Console.WriteLine($"Folder is Empty. Please, pull your log-files in '{ProgramSettings.InputLogPath}' app folder. (Press any key to repeat check)");
+    Console.ReadKey();
+    
+    allLogFilesInfo = Directory.GetFiles(ProgramSettings.InputLogPath).Select(x => new FileInfo(x)).ToArray();
+}
+
+//ToDo: Добавить защиту от пользователя. Нет файлов - попросить положить их и указать полный путь до папки
+Console.WriteLine("All files inside folder? (Press any key to continue): ");
 Console.ReadKey();
-Console.Clear();
-// switch (Console.ReadKey().KeyChar)
+
+
+// Выбор файлов из папки
+AskWindowInfo logFilesSelectWindow = new AskWindowInfo(allLogFilesInfo.Select(x => x.Name).ToArray());
+string[] selectedLogFilesName = logFilesSelectWindow
+    .AskAnswer(true, 1, "All your files from folder bellow. Select the files you want build a Graphics:")
+    .Select(x => x.Content)
+    .ToArray();
+
+FileInfo[] selectedLogFilesInfo = allLogFilesInfo
+    .Where(x => selectedLogFilesName.Contains(x.Name))
+    .ToArray();
+
+
+// Выбор типа файла
+ConsoleCleaner.ClearClean();
+Console.WriteLine("Select the log-files type you want parse:");
+
+AskWindowInfo logFilesTypeSelectWindow = new AskWindowInfo(ProgramSettings.SupportedLogFormats);
+string selectedLogFileType = logFilesTypeSelectWindow.AskAnswer(false, 1).Select(x => x.Content).FirstOrDefault() ?? "";
+
+// Console.WriteLine($"Selected Log File Type: {selectedLogFileType}");
+// Console.WriteLine($"Enummed Log File Type: {Enum.GetName(SupportedLogFormats.gpuz)}");
+//
+// Thread.Sleep(20000);
+
+
+// List<string[]> inputFilesContent = new List<string[]>();
+//
+// foreach (var fileInfo in selectedLogFilesInfo)
 // {
-//     case('y'):
-//         Console.WriteLine("В");
-//         break;
-//     case ('n'):
-//         Console.WriteLine("Your graphics wait you in Graphics folder");
-//         break;
+//     using (StreamReader reader = new StreamReader(fileInfo.FullName))
+//     {
+//         inputFilesContent.Add(reader.ReadToEnd().Split("\n"));
+//     }
 // }
 
 
+// Читаем первый файл
+// string[] firstSelectedFileContent = [];
+// using (StreamReader reader = new StreamReader(selectedLogFilesInfo[0].FullName))
+// {
+//     firstSelectedFileContent = reader.ReadToEnd().Split("\n");
+// }
+string[] headers = [];
+string[] selectedHeaders = [];
+// if (selectedLogFileType == Enum.GetName(SupportedLogFormats.gpuz))
+// {
+//     GpuzLogInfo fileLogInfo = new GpuzLogInfo(firstSelectedFileContent);
+//     headers = fileLogInfo.GetHeaders();
+// }
 
+// Выбираем заголовки, по которым хотим построить графики
+// AskWindowInfo askHeadersWindows = new AskWindowInfo(headers);
+// string[] selectedHeaders = askHeadersWindows
+//     .AskAnswer(true, ProgramSettings.HeadersForPrintColumns, ProgramSettings.HeadersSelectTitle)
+//     .Select(x => x.Content).ToArray();
 
-
-string inputFilePath = "";
-
-var inputFiles = Directory.GetFiles(ProgramSettings.InputLogPath);
-if (inputFiles.Length > 0)
-{
-    inputFilePath = inputFiles[0];
-}
-
-string[] inputFileContent;
-using (StreamReader reader = new StreamReader(inputFilePath))
-{
-    inputFileContent = reader.ReadToEnd().Split("\n");
-    
-    // Console.WriteLine($"input text:\n{inputFileContent[0].Substring(0, 100)}");
-}
-
-GpuzLogInfo fileInfo = new GpuzLogInfo(inputFileContent);
-
-// Пробный вывод заголовков
-// Console.WriteLine($"Headers:\n{string.Join(" | ", fileInfo.GetHeaders())} ");
-
-// Пробный вывод временной шкалы
-// Console.Clear();
-// Console.WriteLine("Time line:\n");
-// string[] timeLine = fileInfo.GetSecondsTimeLineData();
-// Console.WriteLine(string.Join(" | ", timeLine));
-// Console.ReadKey();
-
-
-string[] headers = fileInfo.GetHeaders();
-
+/* =====================================================================================================================
 Dictionary<int, string> headersByIds = new Dictionary<int, string>();
 for (int i = 0; i < headers.Length; i++)
 {
@@ -128,32 +169,77 @@ while (inputedString != "enter")
         
     }
 }
+*///====================================================================================================================
 
 
-Console.Clear();
 
-string[] selectedHeaders = headersByIds.Where(pair => selectedHeadersId.Contains(pair.Key)).Select(pair => pair.Value).ToArray();
-// Console.WriteLine("Selected headers: " + string.Join(", ", headersByIds.Where(pair => selectedHeadersId.Contains(pair.Key)).Select(pair => pair.Value)));
-
-
-double[] secondsTimeLine = fileInfo.GetSecondsTimeLineData().Select(d => double.Parse(d)).ToArray();
-foreach (var item in selectedHeaders)
+//ToDo: использовать using для оптимизации памяти
+foreach (var fileInfo in selectedLogFilesInfo)
 {
-    //ToDo: использовать using для оптимизации памяти
-    string[] strDataByHeader = fileInfo.GetTextDataByHeader(item).Where(x => (x != "-")).Select(x => x.Replace(".", ",")).ToArray();
+    // Читаем файл
+    string[] fileContent = [];
+    string fileRelativePath = Path.GetRelativePath(AppDomain.CurrentDomain.BaseDirectory, fileInfo.FullName);
     
-    // Console.WriteLine(string.Join(" | ", strDataByHeader));
+    using (StreamReader reader = new StreamReader(fileRelativePath))
+    {
+        fileContent = reader.ReadToEnd().Split("\n");
+    }
     
-    double[] doubleDataByHeader = strDataByHeader.Select(x => Convert.ToDouble(x)).ToArray();
     
-    Plot myPlot = new Plot();
-    
-    myPlot.Add.Scatter(secondsTimeLine, doubleDataByHeader);
-    myPlot.SavePng($"Graphics/graphic_{item}.png", 800, 550);
-    
-    Console.WriteLine($"image generated: {item}");
+    // Обрабатываем LogInfo от выбранного типа логов
+    AbstractLogInfo selectedLogInfo;
+    if (selectedLogFileType == Enum.GetName(SupportedLogFormats.gpuz))
+    {
+        selectedLogInfo = new GpuzLogInfo(fileContent);
+        if (headers.Length == 0)
+        {
+            headers = selectedLogInfo.GetHeaders();
+        }
+    }
+    else
+    {
+        selectedLogInfo = new GpuzLogInfo(fileContent);
+        if (headers.Length == 0)
+        {
+            headers = selectedLogInfo.GetHeaders();
+        }
+    }
 
+    // Запрашиваем выбрать заголовки если те не выбраны
+    if (selectedHeaders.Length == 0)
+    {
+        AskWindowInfo askHeadersWindows = new AskWindowInfo(headers);
+        selectedHeaders = askHeadersWindows
+            .AskAnswer(true, ProgramSettings.HeadersForPrintColumns, ProgramSettings.HeadersSelectTitle)
+            .Select(x => x.Content).ToArray();
+    }
+    
+    
+    double[] secondsTimeLine = selectedLogInfo.GetSecondsTimeLineData().Select(double.Parse).ToArray();
+    
+    
+    // Строим график по выбранным заголовкам
+    foreach (var item in selectedHeaders)
+    {
+        string[] strDataByHeader = selectedLogInfo.GetTextDataByHeader(item).Select(x => x.Replace(".", ",")).ToArray();
+        
+        double[] doubleDataByHeader = strDataByHeader.Select(Convert.ToDouble).ToArray();
+
+        // using (Plot tempPlot = new Plot())
+        // {
+        //     tempPlot.
+        // }
+        Plot myPlot = new Plot();
+
+        
+    
+        myPlot.Add.Scatter(secondsTimeLine, doubleDataByHeader);
+        myPlot.SavePng($"Graphics/{Path.GetFileNameWithoutExtension(fileInfo.Name)}_graph_{item}.png", 800, 550);
+    
+        Console.WriteLine($"image generated: Graphics/{Path.GetFileNameWithoutExtension(fileInfo.Name)}_graph_{item}.png");
+    }
 }
+
 
 /*
 double[] dataX = { 0, 1, 2, 3, 4, 5 };

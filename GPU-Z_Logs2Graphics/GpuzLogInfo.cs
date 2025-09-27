@@ -24,7 +24,7 @@ public class GpuzLogInfo : AbstractLogInfo
             // Console.WriteLine(logTextLines[0]);
             string[] newHeaders = _logTextLines[0].Split(",");
         
-            _headers = newHeaders.Select(x => x.Trim()).ToArray();
+            _headers = newHeaders.Select(x => x.Trim()).Where(str => str.Length > 0 && str != "Date").ToArray();
         }
 
         return _headers;
@@ -45,8 +45,9 @@ public class GpuzLogInfo : AbstractLogInfo
             
             if (timeCode.Split(" ").Length == 1)
             {
-                Console.WriteLine("Maybe your Log-File contains more when 1 log write. This is happened when you start log to one file more when one time. We Auto fix it. Calm ;)");
-                break;
+                Console.WriteLine("\nMaybe your Log-File contains more when 1 log write. This is happened when you start log to one file more when one time. We Auto fix it. Calm ;)\n");
+                _rawTimeLine = result.ToArray();
+                return _rawTimeLine;
             }
             
             timeCode = timeCode.Split(" ")[1];
@@ -84,17 +85,26 @@ public class GpuzLogInfo : AbstractLogInfo
 
     public override string[] GetTextDataByHeader(string header)
     {
-        if (header.Length == 0)
+        if (_headers.Length == 0)
         {
             GetHeaders();
         }
 
         List<string> result = new List<string>();
-        int columnId = Array.FindIndex(_headers, (x) => x == header);
+        int columnId = Array.FindIndex(_headers, (x) => x == header) + 1;
         
         for (int i = 1; i < _logTextLines.Length; i++)
         {
+            if (_logTextLines[i] == _logTextLines[0])
+            {
+                return result.ToArray();
+            }
+            
             string targetLineData = _logTextLines[i].Split(",")[columnId].Trim();
+            if (targetLineData == "-")
+            {
+                continue;
+            }
             result.Add(targetLineData);
         }
 
